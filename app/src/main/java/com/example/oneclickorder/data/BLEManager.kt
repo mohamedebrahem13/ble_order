@@ -10,6 +10,7 @@ import com.juul.kable.WriteType
 import com.juul.kable.peripheral
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.filter
 import kotlinx.coroutines.flow.firstOrNull
 import kotlinx.coroutines.withTimeoutOrNull
@@ -24,7 +25,7 @@ class BLEManager @Inject constructor(private val scope: CoroutineScope) {
     private val CCD_UUID: UUID = UUID.fromString("00002902-0000-1000-8000-00805f9b34fb")
 
     companion object {
-        private const val DEVICE_NAME = "Galaxy S8+"  // Update with correct device name
+        private const val DEVICE_NAME = "Galaxy A14"  // Update with correct device name
         private const val TIMEOUT_DURATION = 10000L  // 10 seconds timeout
     }
 
@@ -40,25 +41,19 @@ class BLEManager @Inject constructor(private val scope: CoroutineScope) {
         }
     }
 
-    // Reset Bluetooth by disconnecting and reconnecting the Peripheral
-    private suspend fun resetBluetooth(peripheral: Peripheral) {
+    private suspend fun resetBluetooth() {
         try {
-            // Step 1: Disconnect the peripheral
-            peripheral.disconnect()
-
-            // Optional: Give it a slight delay before reconnecting
+            // Optional: Delay before attempting a reconnection
             delay(1000L)
 
-            // Step 2: Reconnect the peripheral
-            retryOperation {
-                peripheral.connect() // Retry connection as part of reset
-            }
-
+            // Scan and reconnect (fresh connection)
+            scanAndConnect()
             Log.d("BLEManager", "Bluetooth reset: successfully reconnected")
         } catch (e: Exception) {
             Log.e("BLEManager", "Error resetting Bluetooth: ${e.message}")
         }
     }
+
 
     /**
      * Scan for BLE devices and connect to the peripheral with retries and timeout.
@@ -103,7 +98,7 @@ class BLEManager @Inject constructor(private val scope: CoroutineScope) {
                     Log.d("BLEManager", "CCD descriptor found${ccd.descriptorUuid}")
                     retryOperation {
 
-                        peripheral.write(ccd, BluetoothGattDescriptor.ENABLE_INDICATION_VALUE)
+                        peripheral.write(ccd, BluetoothGattDescriptor.ENABLE_NOTIFICATION_VALUE)
                     }
                 } else {
                     Log.e("BLEManager", "CCD descriptor not found")
@@ -112,7 +107,7 @@ class BLEManager @Inject constructor(private val scope: CoroutineScope) {
 
                 // Subscribe to notifications and get the acknowledgment
                 val acknowledgment = observeNotifications(peripheral, characteristic)
-                Log.d("BLEManager", "Acknowledgment received: $acknowledgment")
+                Log.d("BLEManager", "data from observer : $acknowledgment")
                 acknowledgment
             } catch (e: Exception) {
                 Log.e("BLEManager", "Failed to write/read data: ${e.message}")
@@ -120,7 +115,7 @@ class BLEManager @Inject constructor(private val scope: CoroutineScope) {
                 // Check if GATT error 133 occurred and reset Bluetooth
                 if (e.message?.contains("133") == true) {
                     Log.e("BLEManager", "GATT error 133 detected. Resetting Bluetooth...")
-                    resetBluetooth(peripheral)
+                    resetBluetooth()
                 }
 
                 null
@@ -131,18 +126,26 @@ class BLEManager @Inject constructor(private val scope: CoroutineScope) {
         }
     }
 
-    // Observe notifications and return the acknowledgment message
-    private suspend fun observeNotifications(peripheral: Peripheral, characteristic: Characteristic): String? {
-        var responseData: String? = null
+    private suspend fun observeNotifications(peripheral: Peripheral, characteristic: Characteristic): String {
+        val responseData = StringBuilder()
         try {
-            peripheral.observe(characteristic).collect { value ->
-                responseData = value.decodeToString()
-                Log.d("BLEManager", "Received notification: $responseData")
+            peripheral.observe(characteristic).collectLatest { value ->
+                val chunk = value.decodeToString()
+                // Append the chunk to the full response
+                responseData.append(chunk)
+
+                // Check for the end of the message
+                if (responseData.contains("END")) {
+                    // Remove the delimiter "END" before returning the data
+                    val fullResponse = responseData.toString().replace("END", "")
+                    Log.d("BLEManager", "Full response received: $fullResponse")
+                    return@collectLatest
+                }
             }
         } catch (e: Exception) {
             Log.e("BLEManager", "Error observing notifications: ${e.message}")
         }
-        return responseData
+        return responseData.toString()
     }
 
 }
