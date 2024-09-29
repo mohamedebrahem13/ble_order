@@ -8,7 +8,6 @@ import com.juul.kable.Scanner
 import com.juul.kable.WriteType
 import com.juul.kable.peripheral
 import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.filter
 import kotlinx.coroutines.flow.firstOrNull
