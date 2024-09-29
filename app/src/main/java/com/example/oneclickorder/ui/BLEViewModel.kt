@@ -104,7 +104,7 @@ class BLEViewModel @Inject constructor(
         viewModelScope.launch {
             _uiConnectionState.value = "Attempting to reconnect..."
             try {
-                retryWithBackoff(initialDelay = 2000L, factor = 2.5) {
+                retryWithFixedDelay {
                     connectedPeripheral = bleManager.scanAndConnect()  // Scan and reconnect
                     if (connectedPeripheral != null) {
                         _uiConnectionState.value = "Reconnected to Cashier"
@@ -122,21 +122,19 @@ class BLEViewModel @Inject constructor(
         }
     }
 
-    // Retry logic with exponential backoff for infinite retries until success
-    private suspend fun <T> retryWithBackoff(
-        initialDelay: Long = 2000L,  // Start with a 2 second delay
-        factor: Double = 2.5,  // Exponential backoff factor increased to 2.5
+    // Retry logic with a fixed 2-second delay for infinite retries until success
+    private suspend fun <T> retryWithFixedDelay(
+        delayDuration: Long = 2000L,  // Fixed 2 second delay
         block: suspend () -> T
     ): T {
-        var currentDelay = initialDelay
         while (true) {  // Infinite loop for retrying until success
             try {
                 return block()  // Try to execute the block
             } catch (e: Exception) {
-                Log.e("BLEViewModel", "Attempt failed: ${e.message}, retrying in $currentDelay ms")
+                Log.e("BLEViewModel", "Attempt failed: ${e.message}, retrying in $delayDuration ms")
             }
-            delay(currentDelay)
-            currentDelay = (currentDelay * factor).toLong()  // Exponential backoff delay
+            delay(delayDuration)  // Fixed delay between retries
         }
     }
+
 }
