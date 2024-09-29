@@ -49,14 +49,14 @@ fun BLEScreen(viewModel: BLEViewModel = hiltViewModel()) {
         Spacer(modifier = Modifier.height(16.dp))
 
         // Button to send the order data after the connection
-        Button(onClick = { viewModel.sendOrderData("Order #166588") }) {
+        Button(onClick = { viewModel.queueOrderData("Order #166588") }) {
             Text(text = "Send Order1")
         }
 
         Spacer(modifier = Modifier.height(16.dp))
 
         // Button to send the order data after the connection
-        Button(onClick = { viewModel.sendOrderData("Order #15000") }) {
+        Button(onClick = { viewModel.queueOrderData("Order #15000") }) {
             Text(text = "Send Order2")
         }
     }

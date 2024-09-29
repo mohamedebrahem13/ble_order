@@ -7,9 +7,12 @@ import com.example.oneclickorder.data.BLEManager
 import com.juul.kable.Peripheral
 import com.juul.kable.State
 import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.FlowPreview
+import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.debounce
 import kotlinx.coroutines.launch
 import javax.inject.Inject
 
@@ -17,6 +20,7 @@ import javax.inject.Inject
 class BLEViewModel @Inject constructor(
     private val bleManager: BLEManager
 ) : ViewModel() {
+    private val orderChannel = Channel<String>(Channel.UNLIMITED)
 
     // High-level connection state (Idle, Connected, Disconnected, etc.)
     private val _orderState = MutableStateFlow("Idle")
@@ -29,9 +33,28 @@ class BLEViewModel @Inject constructor(
     // Hold the connected peripheral
     private var connectedPeripheral: Peripheral? = null
 
+    // Debounce interval for state updates (in milliseconds)
+    private val delay = 300L
     // Initialize the connection observer
     init {
         observePeripheralConnectionState()
+        processOrderQueue()  // Start processing orders from the queue
+
+    }
+    // Process the orders from the queue one by one
+    private fun processOrderQueue() {
+        viewModelScope.launch {
+            for (order in orderChannel) {
+                sendOrderData(order)
+            }
+        }
+    }
+
+    // Function to queue the order data
+    fun queueOrderData(orderData: String) {
+        viewModelScope.launch {
+            orderChannel.send(orderData)  // Send the order to the queue
+        }
     }
 
     // Function to start the BLE process of scanning and connecting to the Cashier
@@ -40,7 +63,7 @@ class BLEViewModel @Inject constructor(
             _uiConnectionDetailState.value = "Scanning and connecting..."
             connectedPeripheral = bleManager.scanAndConnect()  // Scan and connect to peripheral
             if (connectedPeripheral != null) {
-                _uiConnectionDetailState.value = "Connected to Cashier"
+                _uiConnectionDetailState.value = "Connected"
                 observePeripheralConnectionState()  // Start observing the peripheral state once connected
             } else {
                 _uiConnectionDetailState.value = "Failed to connect"
@@ -100,48 +123,75 @@ class BLEViewModel @Inject constructor(
         }
     }
     // Observe the peripheral's state and attempt reconnection if disconnected
+    @OptIn(FlowPreview::class)
     private fun observePeripheralConnectionState() {
         connectedPeripheral?.let { peripheral ->
             viewModelScope.launch {
-                peripheral.state.collect { state ->
-                    when (state) {
-                        is State.Connected -> {
-                            _uiConnectionDetailState.value = "Connected" // High-level and detailed states are in sync
-                        }
-                        is State.Disconnected -> {
-                            _uiConnectionDetailState.value = "Disconnected"
-                            Log.d("BLEViewModel", "Peripheral disconnected, attempting to reconnect...")
-                            attemptReconnectionWithRetry()  // Try to reconnect with retry logic
-                        }
-                        is State.Disconnecting -> {
-                            _uiConnectionDetailState.value = "Disconnecting..."
-                        }
-                        is State.Connecting.Bluetooth -> {
-                            _uiConnectionDetailState.value = "Connecting: Bluetooth..."
-                        }
-                        is State.Connecting.Services -> {
-                            _uiConnectionDetailState.value = "Connecting: Discovering Services..."
-                        }
-                        is State.Connecting.Observes -> {
-                            _uiConnectionDetailState.value = "Connecting: Setting Up Observes..."
-                        }
-                        else -> {
-                            _uiConnectionDetailState.value = state::class.simpleName ?: "Unknown State"
-                        }
+                // Debounce state updates to avoid rapid updates
+                peripheral.state
+                    // Only emit if the state actually changes
+                    .debounce(delay)  // Debounce to avoid frequent updates
+                    .collect { state ->
+                        handleConnectionState(state)
                     }
+            }
+        }
+    }
+    // Function to handle connection state changes
+    // Handle state changes
+    private fun handleConnectionState(state: State) {
+        when (state) {
+            is State.Connected -> {
+                if (_uiConnectionDetailState.value != "Connected") {
+                    _uiConnectionDetailState.value = "Connected"
+                    Log.d("BLEViewModel", "Peripheral connected")
                 }
+            }
+            is State.Disconnected -> {
+                if (_uiConnectionDetailState.value != "Disconnected") {
+                    _uiConnectionDetailState.value = "Disconnected"
+                    Log.d("BLEViewModel", "Peripheral disconnected, attempting to reconnect...")
+                    attemptReconnectionWithRetry()  // Try to reconnect with retry logic
+                }
+            }
+            is State.Disconnecting -> {
+                if (_uiConnectionDetailState.value != "Disconnecting...") {
+                    _uiConnectionDetailState.value = "Disconnecting..."
+                }
+            }
+            is State.Connecting.Bluetooth -> {
+                if (_uiConnectionDetailState.value != "Connecting: Bluetooth...") {
+                    _uiConnectionDetailState.value = "Connecting: Bluetooth..."
+                }
+            }
+            is State.Connecting.Services -> {
+                if (_uiConnectionDetailState.value != "Connecting: Discovering Services...") {
+                    _uiConnectionDetailState.value = "Connecting: Discovering Services..."
+                }
+            }
+            is State.Connecting.Observes -> {
+                if (_uiConnectionDetailState.value != "Connecting: Setting Up Observes...") {
+                    _uiConnectionDetailState.value = "Connecting: Setting Up Observes..."
+                }
+            }
+            else -> {
+                _uiConnectionDetailState.value = state::class.simpleName ?: "Unknown State"
             }
         }
     }
 
+
+    // Retry logic for reconnection with delay
     private fun attemptReconnectionWithRetry() {
         viewModelScope.launch {
-            _orderState.value = "Attempting to reconnect..."
+            if (_uiConnectionDetailState.value != "Attempting to reconnect...") {
+                _uiConnectionDetailState.value = "Attempting to reconnect..."
+            }
             try {
                 retryWithFixedDelay {
                     connectedPeripheral = bleManager.scanAndConnect()  // Scan and reconnect
                     if (connectedPeripheral != null) {
-                        _uiConnectionDetailState.value = "Reconnected to Cashier"
+                        _uiConnectionDetailState.value = "Connected"
                         observePeripheralConnectionState()  // Re-observe the peripheral state after reconnection
                     } else {
                         throw Exception("Failed to reconnect")
@@ -153,6 +203,7 @@ class BLEViewModel @Inject constructor(
             }
         }
     }
+
 
     // Retry logic with a fixed 2-second delay for infinite retries until success
     private suspend fun <T> retryWithFixedDelay(
