@@ -19,8 +19,8 @@ class BLEViewModel @Inject constructor(
 ) : ViewModel() {
 
     // High-level connection state (Idle, Connected, Disconnected, etc.)
-    private val _uiConnectionState = MutableStateFlow("Idle")
-    val uiConnectionState: StateFlow<String> = _uiConnectionState
+    private val _orderState = MutableStateFlow("Idle")
+    val orderState: StateFlow<String> = _orderState
 
     // Detailed connection state (Connecting.Bluetooth, Connecting.Services, etc.)
     private val _uiConnectionDetailState = MutableStateFlow("Idle")
@@ -37,31 +37,68 @@ class BLEViewModel @Inject constructor(
     // Function to start the BLE process of scanning and connecting to the Cashier
     fun scanAndConnect() {
         viewModelScope.launch {
-            _uiConnectionState.value = "Scanning and connecting..."
+            _uiConnectionDetailState.value = "Scanning and connecting..."
             connectedPeripheral = bleManager.scanAndConnect()  // Scan and connect to peripheral
             if (connectedPeripheral != null) {
-                _uiConnectionState.value = "Connected to Cashier"
+                _uiConnectionDetailState.value = "Connected to Cashier"
                 observePeripheralConnectionState()  // Start observing the peripheral state once connected
             } else {
-                _uiConnectionState.value = "Failed to connect"
+                _uiConnectionDetailState.value = "Failed to connect"
             }
         }
     }
 
-    // Function to send order data and subscribe to notifications
+    // Function to send order data only (separated from observing notifications)
     fun sendOrderData(orderData: String) {
         viewModelScope.launch {
             connectedPeripheral?.let { peripheral ->
-                _uiConnectionState.value = "Sending order data..."
-                val response = bleManager.writeOrderDataAndSubscribe(peripheral, orderData)  // Write data and subscribe to notifications
-                Log.d("BLEViewModel", "Response from server: $response")
-                _uiConnectionState.value = response ?: "Failed to receive response"
+                _orderState.value = "Sending order data..."
+                val success = bleManager.writeOrderData(peripheral, orderData)  // Write data to the peripheral
+                if (success) {
+                    startObservingNotifications()
+                } else {
+                    _orderState.value = "Failed to send order data"
+                }
             } ?: run {
-                _uiConnectionState.value = "No connected device. Please scan and connect first."
+                _orderState.value = "No connected device. Please scan and connect first."
             }
         }
     }
+    // Function to start observing notifications
+    private fun startObservingNotifications() {
+        viewModelScope.launch {
+            connectedPeripheral?.let { peripheral ->
+                val characteristic = bleManager.getCharacteristic(peripheral)
+                if (characteristic != null) {
+                    val responseData = StringBuilder()  // Accumulate chunks here
+                    bleManager.startObservingNotifications(peripheral, characteristic)
+                        .collect { dataChunk ->
+                            // Append each chunk to the accumulated data
+                            responseData.append(dataChunk)
 
+                            // Log each chunk received for debugging
+                            Log.d("BLEViewModel", "Received notification chunk: $dataChunk")
+
+                            // Check for the "END" marker indicating the full message is received
+                            if (responseData.contains("END")) {
+                                val fullResponse = responseData.toString().replace("END", "")  // Clean the message
+                                Log.d("BLEViewModel", "Full notification received: $fullResponse")
+
+                                // Update the state with the full response
+                                _orderState.value = fullResponse
+
+                                // Clear the responseData StringBuilder for future notifications if necessary
+                                responseData.clear()
+                            }
+                        }
+                } else {
+                    _orderState.value = "Notification characteristic not found"
+                }
+            } ?: run {
+                _orderState.value = "No connected device. Please scan and connect first."
+            }
+        }
+    }
     // Observe the peripheral's state and attempt reconnection if disconnected
     private fun observePeripheralConnectionState() {
         connectedPeripheral?.let { peripheral ->
@@ -69,17 +106,14 @@ class BLEViewModel @Inject constructor(
                 peripheral.state.collect { state ->
                     when (state) {
                         is State.Connected -> {
-                            _uiConnectionState.value = "Connected"
                             _uiConnectionDetailState.value = "Connected" // High-level and detailed states are in sync
                         }
                         is State.Disconnected -> {
-                            _uiConnectionState.value = "Disconnected"
                             _uiConnectionDetailState.value = "Disconnected"
                             Log.d("BLEViewModel", "Peripheral disconnected, attempting to reconnect...")
                             attemptReconnectionWithRetry()  // Try to reconnect with retry logic
                         }
                         is State.Disconnecting -> {
-                            _uiConnectionState.value = "Disconnecting..."
                             _uiConnectionDetailState.value = "Disconnecting..."
                         }
                         is State.Connecting.Bluetooth -> {
@@ -102,12 +136,11 @@ class BLEViewModel @Inject constructor(
 
     private fun attemptReconnectionWithRetry() {
         viewModelScope.launch {
-            _uiConnectionState.value = "Attempting to reconnect..."
+            _orderState.value = "Attempting to reconnect..."
             try {
                 retryWithFixedDelay {
                     connectedPeripheral = bleManager.scanAndConnect()  // Scan and reconnect
                     if (connectedPeripheral != null) {
-                        _uiConnectionState.value = "Reconnected to Cashier"
                         _uiConnectionDetailState.value = "Reconnected to Cashier"
                         observePeripheralConnectionState()  // Re-observe the peripheral state after reconnection
                     } else {
@@ -116,7 +149,6 @@ class BLEViewModel @Inject constructor(
                 }
             } catch (e: Exception) {
                 Log.e("BLEViewModel", "Reconnection failed: ${e.message}")
-                _uiConnectionState.value = "Reconnection failed"
                 _uiConnectionDetailState.value = "Reconnection failed"
             }
         }

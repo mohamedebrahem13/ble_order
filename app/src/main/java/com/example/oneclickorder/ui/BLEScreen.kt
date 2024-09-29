@@ -19,7 +19,7 @@ import androidx.hilt.navigation.compose.hiltViewModel
 @Composable
 fun BLEScreen(viewModel: BLEViewModel = hiltViewModel()) {
     // Collect the high-level connection state
-    val connectionState by viewModel.uiConnectionState.collectAsState()
+    val connectionState by viewModel.orderState.collectAsState()
 
     // Collect the detailed connection state
     val connectionDetailState by viewModel.uiConnectionDetailState.collectAsState()
@@ -32,7 +32,7 @@ fun BLEScreen(viewModel: BLEViewModel = hiltViewModel()) {
         verticalArrangement = Arrangement.Center
     ) {
         // Display current high-level connection status
-        Text(text = "Connection Status: $connectionState")
+        Text(text = "Order Status: $connectionState")
 
         Spacer(modifier = Modifier.height(16.dp))
 
