@@ -4,6 +4,9 @@ import android.bluetooth.BluetoothAdapter
 import android.bluetooth.BluetoothManager
 import android.content.Context
 import com.example.oneclickorder.data.BLEManager
+import com.example.oneclickorder.data.repository.BLERepositoryImpl
+import com.example.oneclickorder.data.repository.source.IBLERepository
+import com.example.oneclickorder.domain.BLEUseCase
 import dagger.Module
 import dagger.Provides
 import dagger.hilt.InstallIn
@@ -30,12 +33,34 @@ object AppModule {
     ): BluetoothAdapter {
         return bluetoothManager.adapter
     }
+    @Provides
+    @Singleton
+    fun provideCoroutineScope(): CoroutineScope {
+        // Providing CoroutineScope with SupervisorJob for managing BLE connections
+        return CoroutineScope(SupervisorJob() + Dispatchers.IO)
+    }
 
     @Provides
     @Singleton
-    fun provideBLEManager(): BLEManager {
-        // Providing CoroutineScope with SupervisorJob for managing BLE connections
-        val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
-        return BLEManager(scope,)
+    fun provideBLEManager(
+        scope: CoroutineScope
+    ): BLEManager {
+        return BLEManager(scope)
+    }
+    // Provide the BLERepository implementation
+    @Provides
+    @Singleton
+    fun provideBLERepository(
+        bleManager: BLEManager
+    ): IBLERepository {
+        return BLERepositoryImpl(bleManager)
+    }
+    // Provide the BLEUseCase
+    @Provides
+    @Singleton
+    fun provideBLEUseCase(
+        repository: IBLERepository
+    ): BLEUseCase {
+        return BLEUseCase(repository)
     }
 }

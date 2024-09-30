@@ -3,7 +3,7 @@ package com.example.oneclickorder.ui
 import android.util.Log
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import com.example.oneclickorder.data.BLEManager
+import com.example.oneclickorder.domain.BLEUseCase
 import com.juul.kable.Peripheral
 import com.juul.kable.State
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -18,7 +18,7 @@ import javax.inject.Inject
 
 @HiltViewModel
 class BLEViewModel @Inject constructor(
-    private val bleManager: BLEManager
+    private val bleUseCase: BLEUseCase  // Injecting BLEUseCase instead of BLEManager
 ) : ViewModel() {
     private val orderChannel = Channel<String>(Channel.UNLIMITED)
 
@@ -35,12 +35,12 @@ class BLEViewModel @Inject constructor(
 
     // Debounce interval for state updates (in milliseconds)
     private val delay = 300L
-    // Initialize the connection observer
+
     init {
         observePeripheralConnectionState()
         processOrderQueue()  // Start processing orders from the queue
-
     }
+
     // Process the orders from the queue one by one
     private fun processOrderQueue() {
         viewModelScope.launch {
@@ -61,7 +61,7 @@ class BLEViewModel @Inject constructor(
     fun scanAndConnect() {
         viewModelScope.launch {
             _uiConnectionDetailState.value = "Scanning and connecting..."
-            connectedPeripheral = bleManager.scanAndConnect()  // Scan and connect to peripheral
+            connectedPeripheral = bleUseCase.scanAndConnect()  // Use BLEUseCase to scan and connect
             if (connectedPeripheral != null) {
                 _uiConnectionDetailState.value = "Connected"
                 observePeripheralConnectionState()  // Start observing the peripheral state once connected
@@ -76,7 +76,7 @@ class BLEViewModel @Inject constructor(
         viewModelScope.launch {
             connectedPeripheral?.let { peripheral ->
                 _orderState.value = "Sending order data..."
-                val success = bleManager.writeOrderData(peripheral, orderData)  // Write data to the peripheral
+                val success = bleUseCase.sendOrderData(peripheral, orderData)  // Use BLEUseCase to send order data
                 if (success) {
                     startObservingNotifications()
                 } else {
@@ -87,33 +87,33 @@ class BLEViewModel @Inject constructor(
             }
         }
     }
+
     // Function to start observing notifications
     private fun startObservingNotifications() {
         viewModelScope.launch {
             connectedPeripheral?.let { peripheral ->
-                val characteristic = bleManager.getCharacteristic(peripheral)
+                val characteristic = bleUseCase.getPeripheralCharacteristic(peripheral)  // Use BLEUseCase to get characteristic
                 if (characteristic != null) {
                     val responseData = StringBuilder()  // Accumulate chunks here
-                    bleManager.startObservingNotifications(peripheral, characteristic)
-                        .collect { dataChunk ->
-                            // Append each chunk to the accumulated data
-                            responseData.append(dataChunk)
+                    bleUseCase.observeNotifications(peripheral)?.collect { dataChunk ->
+                        // Append each chunk to the accumulated data
+                        responseData.append(dataChunk)
 
-                            // Log each chunk received for debugging
-                            Log.d("BLEViewModel", "Received notification chunk: $dataChunk")
+                        // Log each chunk received for debugging
+                        Log.d("BLEViewModel", "Received notification chunk: $dataChunk")
 
-                            // Check for the "END" marker indicating the full message is received
-                            if (responseData.contains("END")) {
-                                val fullResponse = responseData.toString().replace("END", "")  // Clean the message
-                                Log.d("BLEViewModel", "Full notification received: $fullResponse")
+                        // Check for the "END" marker indicating the full message is received
+                        if (responseData.contains("END")) {
+                            val fullResponse = responseData.toString().replace("END", "")  // Clean the message
+                            Log.d("BLEViewModel", "Full notification received: $fullResponse")
 
-                                // Update the state with the full response
-                                _orderState.value = fullResponse
+                            // Update the state with the full response
+                            _orderState.value = fullResponse
 
-                                // Clear the responseData StringBuilder for future notifications if necessary
-                                responseData.clear()
-                            }
+                            // Clear the responseData StringBuilder for future notifications if necessary
+                            responseData.clear()
                         }
+                    }
                 } else {
                     _orderState.value = "Notification characteristic not found"
                 }
@@ -122,6 +122,7 @@ class BLEViewModel @Inject constructor(
             }
         }
     }
+
     // Observe the peripheral's state and attempt reconnection if disconnected
     @OptIn(FlowPreview::class)
     private fun observePeripheralConnectionState() {
@@ -137,8 +138,8 @@ class BLEViewModel @Inject constructor(
             }
         }
     }
+
     // Function to handle connection state changes
-    // Handle state changes
     private fun handleConnectionState(state: State) {
         when (state) {
             is State.Connected -> {
@@ -180,7 +181,6 @@ class BLEViewModel @Inject constructor(
         }
     }
 
-
     // Retry logic for reconnection with delay
     private fun attemptReconnectionWithRetry() {
         viewModelScope.launch {
@@ -189,7 +189,7 @@ class BLEViewModel @Inject constructor(
             }
             try {
                 retryWithFixedDelay {
-                    connectedPeripheral = bleManager.scanAndConnect()  // Scan and reconnect
+                    connectedPeripheral = bleUseCase.scanAndConnect()  // Use BLEUseCase to scan and reconnect
                     if (connectedPeripheral != null) {
                         _uiConnectionDetailState.value = "Connected"
                         observePeripheralConnectionState()  // Re-observe the peripheral state after reconnection
@@ -203,7 +203,6 @@ class BLEViewModel @Inject constructor(
             }
         }
     }
-
 
     // Retry logic with a fixed 2-second delay for infinite retries until success
     private suspend fun <T> retryWithFixedDelay(
@@ -219,5 +218,4 @@ class BLEViewModel @Inject constructor(
             delay(delayDuration)  // Fixed delay between retries
         }
     }
-
 }
