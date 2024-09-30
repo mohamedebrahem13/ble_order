@@ -18,11 +18,8 @@ import androidx.hilt.navigation.compose.hiltViewModel
 
 @Composable
 fun BLEScreen(viewModel: BLEViewModel = hiltViewModel()) {
-    // Collect the high-level connection state
-    val connectionState by viewModel.orderState.collectAsState()
-
-    // Collect the detailed connection state
-    val connectionDetailState by viewModel.uiConnectionDetailState.collectAsState()
+    // Collect the unified BLE state from the ViewModel
+    val bleState by viewModel.bleState.collectAsState()
 
     Column(
         modifier = Modifier
@@ -31,33 +28,33 @@ fun BLEScreen(viewModel: BLEViewModel = hiltViewModel()) {
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.Center
     ) {
-        // Display current high-level connection status
-        Text(text = "Order Status: $connectionState")
+        // Display current order status based on the state
+        Text(text = "Order Status: ${bleState.orderState}")
 
         Spacer(modifier = Modifier.height(16.dp))
 
-        // Display current detailed connection status
-        Text(text = "Connection Details: $connectionDetailState")
+        // Display current connection status based on the state
+        Text(text = "Connection Status: ${bleState.connectionState}")
 
         Spacer(modifier = Modifier.height(16.dp))
 
         // Button to scan and connect to the BLE device
-        Button(onClick = { viewModel.scanAndConnect() }) {
+        Button(onClick = { viewModel.sendIntent(BLEIntent.ScanAndConnect) }) {
             Text(text = "Scan & Connect")
         }
 
         Spacer(modifier = Modifier.height(16.dp))
 
-        // Button to send the order data after the connection
-        Button(onClick = { viewModel.queueOrderData("Order #166588") }) {
-            Text(text = "Send Order1")
+        // Button to send the first order data after the connection
+        Button(onClick = { viewModel.sendIntent(BLEIntent.SendOrderData("Order #166588")) }) {
+            Text(text = "Send Order 1")
         }
 
         Spacer(modifier = Modifier.height(16.dp))
 
-        // Button to send the order data after the connection
-        Button(onClick = { viewModel.queueOrderData("Order #15000") }) {
-            Text(text = "Send Order2")
+        // Button to send the second order data after the connection
+        Button(onClick = { viewModel.sendIntent(BLEIntent.SendOrderData("Order #15000")) }) {
+            Text(text = "Send Order 2")
         }
     }
 }
