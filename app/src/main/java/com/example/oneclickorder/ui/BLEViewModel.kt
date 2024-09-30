@@ -72,7 +72,7 @@ class BLEViewModel @Inject constructor(
     }
 
     // Function to send order data only (separated from observing notifications)
-    fun sendOrderData(orderData: String) {
+    private fun sendOrderData(orderData: String) {
         viewModelScope.launch {
             connectedPeripheral?.let { peripheral ->
                 _orderState.value = "Sending order data..."
