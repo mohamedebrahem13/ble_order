@@ -21,6 +21,7 @@ fun BLEScreen(viewModel: BLEViewModel = hiltViewModel()) {
     // Collect the unified BLE state from the ViewModel
     val bleState by viewModel.bleState.collectAsState()
 
+
     Column(
         modifier = Modifier
             .fillMaxSize()
