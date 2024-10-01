@@ -96,8 +96,7 @@ class BLEViewModel @Inject constructor(
         viewModelScope.launch {
             try {
                 connectedPeripheral?.let { peripheral ->
-                    _bleState.value =
-                        _bleState.value.copy(orderState = BLEState.OrderState.SendingOrder(orderData))
+                    _bleState.value = _bleState.value.copy(orderState = BLEState.OrderState.SendingOrder(orderData))
 
                     val success = bleUseCase.sendOrderData(peripheral, orderData)
                     if (success) {
@@ -107,24 +106,44 @@ class BLEViewModel @Inject constructor(
                     }
                 } ?: throw NotReadyException("No connected device. Please scan and connect first.")
             } catch (e: ConnectionLostException) {
-                requeueFailedOrder(orderData) // Now this updates state
+                requeueFailedOrder(orderData)
                 _bleState.value = _bleState.value.copy(
                     orderState = BLEState.OrderState.Error(e.message ?: "Connection lost while sending data")
                 )
+                // Force disconnect and reconnect
+                disconnectAndReconnect()
             } catch (e: NotReadyException) {
-                requeueFailedOrder(orderData) // Now this updates state
+                requeueFailedOrder(orderData)
                 _bleState.value = _bleState.value.copy(
                     orderState = BLEState.OrderState.Error(e.message ?: "Peripheral not ready for data transmission")
                 )
+                // Force disconnect and reconnect
+                disconnectAndReconnect()
             } catch (e: Exception) {
-                requeueFailedOrder(orderData) // Now this updates state
+                requeueFailedOrder(orderData)
                 _bleState.value = _bleState.value.copy(
                     orderState = BLEState.OrderState.Error(e.message ?: "Unknown error occurred while sending data")
                 )
                 Log.e("BLEViewModel", "Error sending order data: ${e.message}")
+                // Force disconnect and reconnect
+                disconnectAndReconnect()
             }
         }
     }
+    private fun disconnectAndReconnect() {
+        viewModelScope.launch {
+            connectedPeripheral?.let {
+                Log.d("BLEViewModel", "Forcefully disconnecting peripheral")
+                it.disconnect()  // Forcefully disconnect the peripheral
+                _bleState.value = _bleState.value.copy(connectionState = BLEState.ConnectionState.Disconnected)
+            }
+
+            // Wait a moment to ensure the disconnection happens
+            delay(1000)
+
+        }
+    }
+
 
     // Requeue failed orders by updating the state
     private fun requeueFailedOrder(orderData: String) {
