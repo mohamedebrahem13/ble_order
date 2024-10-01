@@ -2,7 +2,9 @@ package com.example.oneclickorder.ui
 
 data class BLEState(
     val connectionState: ConnectionState = ConnectionState.Idle,
-    val orderState: OrderState = OrderState.Idle
+    val orderState: OrderState = OrderState.Idle,
+    val failedOrders: List<String> = emptyList()  // Add failedOrders here
+
 ) {
     // Separate state for connection
     sealed class ConnectionState {

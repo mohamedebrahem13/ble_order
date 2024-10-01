@@ -4,6 +4,8 @@ import android.util.Log
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.oneclickorder.domain.BLEUseCase
+import com.juul.kable.ConnectionLostException
+import com.juul.kable.NotReadyException
 import com.juul.kable.Peripheral
 import com.juul.kable.State
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -21,27 +23,24 @@ class BLEViewModel @Inject constructor(
     private val bleUseCase: BLEUseCase
 ) : ViewModel() {
 
-    // Single state object to manage both connection and order state
     private val _bleState = MutableStateFlow(BLEState())
     val bleState: StateFlow<BLEState> = _bleState
 
     private val intentChannel = Channel<BLEIntent>(Channel.UNLIMITED)
-    private val orderChannel = Channel<String>(Channel.UNLIMITED)
+    private val orderQueue = mutableListOf<String>() // Keep this for processing orders
     private var connectedPeripheral: Peripheral? = null
+    private var isProcessingOrders = false
 
     init {
         processIntents()
-        processOrderQueue()
     }
 
-    // Public method for dispatching intents
     fun sendIntent(intent: BLEIntent) {
         viewModelScope.launch {
             intentChannel.send(intent)
         }
     }
 
-    // Process intents one by one
     private fun processIntents() {
         viewModelScope.launch {
             for (intent in intentChannel) {
@@ -53,19 +52,24 @@ class BLEViewModel @Inject constructor(
         }
     }
 
-    // Queue the order data when SendOrderData intent is received
     private fun queueOrderData(orderData: String) {
         viewModelScope.launch {
-            orderChannel.send(orderData)
+            orderQueue.add(orderData)
+            processOrderQueue()
         }
     }
 
-    // Process the orders from the queue one by one
     private fun processOrderQueue() {
+        if (isProcessingOrders) return
+
+        isProcessingOrders = true
+
         viewModelScope.launch {
-            for (order in orderChannel) {
+            while (orderQueue.isNotEmpty()) {
+                val order = orderQueue.removeAt(0)
                 sendOrderData(order)
             }
+            isProcessingOrders = false
         }
     }
 
@@ -88,28 +92,60 @@ class BLEViewModel @Inject constructor(
         }
     }
 
-    // Handle sending order data
     private fun sendOrderData(orderData: String) {
         viewModelScope.launch {
-            connectedPeripheral?.let { peripheral ->
-                // Update the order state to sending order
-                _bleState.value = _bleState.value.copy(orderState = BLEState.OrderState.SendingOrder(orderData))
+            try {
+                connectedPeripheral?.let { peripheral ->
+                    _bleState.value =
+                        _bleState.value.copy(orderState = BLEState.OrderState.SendingOrder(orderData))
 
-                val success = bleUseCase.sendOrderData(peripheral, orderData)
-                if (success) {
-                    startObservingNotifications()
-                } else {
-                    // Update the order state to error
-                    _bleState.value = _bleState.value.copy(orderState = BLEState.OrderState.Error("Failed to send order data"))
-                }
-            } ?: run {
-                // Update the order state to error
-                _bleState.value = _bleState.value.copy(orderState = BLEState.OrderState.Error("No connected device. Please scan and connect first."))
+                    val success = bleUseCase.sendOrderData(peripheral, orderData)
+                    if (success) {
+                        startObservingNotifications()
+                    } else {
+                        throw ConnectionLostException("Failed to send order data")
+                    }
+                } ?: throw NotReadyException("No connected device. Please scan and connect first.")
+            } catch (e: ConnectionLostException) {
+                requeueFailedOrder(orderData) // Now this updates state
+                _bleState.value = _bleState.value.copy(
+                    orderState = BLEState.OrderState.Error(e.message ?: "Connection lost while sending data")
+                )
+            } catch (e: NotReadyException) {
+                requeueFailedOrder(orderData) // Now this updates state
+                _bleState.value = _bleState.value.copy(
+                    orderState = BLEState.OrderState.Error(e.message ?: "Peripheral not ready for data transmission")
+                )
+            } catch (e: Exception) {
+                requeueFailedOrder(orderData) // Now this updates state
+                _bleState.value = _bleState.value.copy(
+                    orderState = BLEState.OrderState.Error(e.message ?: "Unknown error occurred while sending data")
+                )
+                Log.e("BLEViewModel", "Error sending order data: ${e.message}")
             }
         }
     }
 
-    // Function to start observing notifications
+    // Requeue failed orders by updating the state
+    private fun requeueFailedOrder(orderData: String) {
+        val updatedFailedOrders = _bleState.value.failedOrders + orderData
+        _bleState.value = _bleState.value.copy(failedOrders = updatedFailedOrders) // Update failedOrders in state
+    }
+
+    // Automatically retry failed orders when the connection is re-established
+    private fun retryFailedOrders() {
+        viewModelScope.launch {
+            val failedOrders = _bleState.value.failedOrders
+            if (failedOrders.isNotEmpty()) {
+                for (order in failedOrders) {
+                    sendOrderData(order)
+                }
+                // Clear the failed orders after retry
+                _bleState.value = _bleState.value.copy(failedOrders = emptyList())
+            }
+        }
+    }
+
     private fun startObservingNotifications() {
         viewModelScope.launch {
             connectedPeripheral?.let { peripheral ->
@@ -120,33 +156,27 @@ class BLEViewModel @Inject constructor(
                         responseData.append(dataChunk)
                         if (responseData.contains("END")) {
                             val fullResponse = responseData.toString().replace("END", "")
-                            // Update the order state to notification received
                             _bleState.value = _bleState.value.copy(orderState = BLEState.OrderState.NotificationReceived(fullResponse))
                             responseData.clear()
                         }
                     }
                 } else {
-                    // Update the order state to error
                     _bleState.value = _bleState.value.copy(orderState = BLEState.OrderState.Error("Notification characteristic not found"))
                 }
             } ?: run {
-                // Update the order state to error
                 _bleState.value = _bleState.value.copy(orderState = BLEState.OrderState.Error("No connected device. Please scan and connect first."))
             }
         }
     }
 
-    // Retry logic for reconnection with delay
     private fun attemptReconnectionWithRetry() {
         viewModelScope.launch {
-            // Update the connection state to reconnecting
             _bleState.value = _bleState.value.copy(connectionState = BLEState.ConnectionState.Reconnecting)
 
             try {
                 retryWithFixedDelay {
                     connectedPeripheral = bleUseCase.scanAndConnect()
                     if (connectedPeripheral != null) {
-                        // Update the connection state to connected
                         _bleState.value = _bleState.value.copy(connectionState = BLEState.ConnectionState.Connected)
                         observePeripheralConnectionState()
                     } else {
@@ -154,12 +184,10 @@ class BLEViewModel @Inject constructor(
                     }
                 }
             } catch (e: Exception) {
-                // Update the connection state to error
                 _bleState.value = _bleState.value.copy(connectionState = BLEState.ConnectionState.Error(e.message ?: "Reconnection failed"))
             }
         }
     }
-
     // Retry logic with a fixed delay
     private suspend fun <T> retryWithFixedDelay(
         delayDuration: Long = 2000L,
@@ -175,7 +203,6 @@ class BLEViewModel @Inject constructor(
         }
     }
 
-    // Observe the peripheral's state and attempt reconnection if disconnected
     @OptIn(FlowPreview::class)
     private fun observePeripheralConnectionState() {
         connectedPeripheral?.let { peripheral ->
@@ -187,11 +214,11 @@ class BLEViewModel @Inject constructor(
         }
     }
 
-    // Handle connection state changes
     private fun handleConnectionState(state: State) {
         when (state) {
             is State.Connected -> {
                 _bleState.value = _bleState.value.copy(connectionState = BLEState.ConnectionState.Connected)
+                retryFailedOrders()
                 Log.d("BLEViewModel", "Peripheral connected")
             }
             is State.Disconnected -> {
@@ -204,4 +231,5 @@ class BLEViewModel @Inject constructor(
             }
         }
     }
+
 }
