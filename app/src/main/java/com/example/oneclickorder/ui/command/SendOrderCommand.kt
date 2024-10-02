@@ -27,11 +27,11 @@ fun sendOrderCommand(
         } ?: throw Exception("No connected device. Please scan and connect first.")
     } catch (e: ConnectionLostException) {
         requeueFailedOrder(orderData, bleStateMonad)
-//        disconnectPeripheral(peripheral, bleStateMonad) // Disconnect before reconnecting
+        disconnectPeripheral(peripheral, bleStateMonad) // Disconnect before reconnecting
         Result.Failure(e)
     } catch (e: Exception) {
         requeueFailedOrder(orderData, bleStateMonad)
-//        disconnectPeripheral(peripheral, bleStateMonad) // Disconnect before reconnecting
+        disconnectPeripheral(peripheral, bleStateMonad) // Disconnect before reconnecting
         Result.Failure(e)
     }
 }
