@@ -7,6 +7,8 @@ import com.example.oneclickorder.data.BLEManager
 import com.example.oneclickorder.data.repository.BLERepositoryImpl
 import com.example.oneclickorder.data.repository.source.IBLERepository
 import com.example.oneclickorder.domain.BLEUseCase
+import com.example.oneclickorder.domain.state.BLEStateMonad
+import com.example.oneclickorder.ui.BLEState
 import dagger.Module
 import dagger.Provides
 import dagger.hilt.InstallIn
@@ -15,6 +17,7 @@ import dagger.hilt.components.SingletonComponent
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.flow.MutableStateFlow
 import javax.inject.Singleton
 
 @Module
@@ -63,4 +66,13 @@ object AppModule {
     ): BLEUseCase {
         return BLEUseCase(repository)
     }
-}
+    @Provides
+    @Singleton
+    fun provideMutableStateFlow(): MutableStateFlow<BLEState> {
+        return MutableStateFlow(BLEState())  // Initialize with a default BLEState
+    }
+    @Provides
+    @Singleton
+    fun provideBLEStateMonad(stateFlow: MutableStateFlow<BLEState>): BLEStateMonad {
+        return BLEStateMonad(stateFlow)  // Inject the state flow into the monad
+    }}

@@ -3,17 +3,38 @@ package com.example.oneclickorder.domain
 import com.example.oneclickorder.data.repository.source.IBLERepository
 import com.juul.kable.Peripheral
 import kotlinx.coroutines.flow.Flow
+import com.example.oneclickorder.domain.model.Result
+
 import javax.inject.Inject
 
 class BLEUseCase @Inject constructor(
-    private val repository: IBLERepository  // Interact with the interface, not the implementation
+    private val repository: IBLERepository
 ) {
-    suspend fun scanAndConnect(): Peripheral? {
-        return repository.scanAndConnect()
+
+    suspend fun scanAndConnect(): Result<Peripheral?> {
+        return try {
+            val peripheral = repository.scanAndConnect()
+            if (peripheral != null) {
+                Result.Success(peripheral)
+            } else {
+                Result.Failure(Exception("Failed to connect to device"))
+            }
+        } catch (e: Exception) {
+            Result.Failure(e)
+        }
     }
 
-    suspend fun sendOrderData(peripheral: Peripheral, orderData: String): Boolean {
-        return repository.writeOrderData(peripheral, orderData)
+    suspend fun sendOrderData(peripheral: Peripheral, orderData: String): Result<Boolean> {
+        return try {
+            val success = repository.writeOrderData(peripheral, orderData)
+            if (success) {
+                Result.Success(true)
+            } else {
+                Result.Failure(Exception("Failed to send order data"))
+            }
+        } catch (e: Exception) {
+            Result.Failure(e)
+        }
     }
 
     fun observeNotifications(peripheral: Peripheral): Flow<String>? {
