@@ -1,13 +1,11 @@
 package com.example.oneclickorder.ui.command
 
-import android.util.Log
 import com.example.oneclickorder.domain.BLEUseCase
 import com.example.oneclickorder.domain.model.Result
 import com.example.oneclickorder.domain.state.BLEStateMonad
 import com.example.oneclickorder.ui.BLEState
 import com.juul.kable.ConnectionLostException
 import com.juul.kable.Peripheral
-import kotlinx.coroutines.delay
 
 
 fun sendOrderCommand(
