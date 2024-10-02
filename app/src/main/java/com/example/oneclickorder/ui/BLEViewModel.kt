@@ -36,7 +36,6 @@ class BLEViewModel @Inject constructor(
 
     init {
         processIntents()
-        observePeripheralConnectionState()
     }
 
     fun sendIntent(intent: BLEIntent) {
@@ -55,7 +54,6 @@ class BLEViewModel @Inject constructor(
                         if (result is Result.Success) {
                             connectedPeripheral = result.data  // Store the connected peripheral
                         }
-                        observePeripheralConnectionState()  // Observe the connection state
                         startObservingNotifications()       // Start observing notifications
                         result  // Return the result for executeCommand to handle properly
                     }
@@ -169,18 +167,16 @@ class BLEViewModel @Inject constructor(
     private fun handleConnectionState(state: State) {
         when (state) {
             is State.Connected -> {
-                if (bleState.value.connectionState != BLEState.ConnectionState.Connected) {
                     bleStateMonad.updateConnectionState(BLEState.ConnectionState.Connected)
                     Log.d("BLEViewModel", "Peripheral connected")
                     retryFailedOrders()  // Retry any failed orders after connection is restored
-                }
+
             }
             is State.Disconnected -> {
-                if (bleState.value.connectionState != BLEState.ConnectionState.Disconnected) {
                     bleStateMonad.updateConnectionState(BLEState.ConnectionState.Disconnected)
                     Log.d("BLEViewModel", "Peripheral disconnected, attempting to reconnect...")
                     attemptReconnectionWithRetry()
-                }
+
             }
             else -> {
                 bleStateMonad.updateConnectionState(BLEState.ConnectionState.Error("Unknown state"))
