@@ -3,10 +3,16 @@ package com.example.oneclickorder.di
 import android.bluetooth.BluetoothAdapter
 import android.bluetooth.BluetoothManager
 import android.content.Context
+import androidx.room.Room
 import com.example.oneclickorder.data.BLEManager
 import com.example.oneclickorder.data.repository.BLERepositoryImpl
+import com.example.oneclickorder.data.repository.LocalOrderRepositoryImpl
 import com.example.oneclickorder.data.repository.source.IBLERepository
+import com.example.oneclickorder.data.repository.source.ILocalOrderRepository
+import com.example.oneclickorder.data.room.AppDatabase
+import com.example.oneclickorder.data.room.OrderDao
 import com.example.oneclickorder.domain.BLEUseCase
+import com.example.oneclickorder.domain.LocalOrderUseCase
 import dagger.Module
 import dagger.Provides
 import dagger.hilt.InstallIn
@@ -62,5 +68,40 @@ object AppModule {
         repository: IBLERepository
     ): BLEUseCase {
         return BLEUseCase(repository)
+    }
+    // **Room Database related providers**
+
+    // Provide the Room Database
+    @Provides
+    @Singleton
+    fun provideAppDatabase(
+        @ApplicationContext context: Context
+    ): AppDatabase {
+        return Room.databaseBuilder(
+            context,
+            AppDatabase::class.java,
+            "order_database"
+        ).build()
+    }
+
+    // Provide OrderDao
+    @Provides
+    @Singleton
+    fun provideOrderDao(appDatabase: AppDatabase): OrderDao {
+        return appDatabase.orderDao()
+    }
+    @Provides
+    @Singleton
+    fun provideLocalOrderUseCase(
+        localOrderRepository: ILocalOrderRepository
+    ): LocalOrderUseCase {
+        return LocalOrderUseCase(localOrderRepository)
+    }
+    @Provides
+    @Singleton
+    fun provideLocalOrderRepository(
+        orderDao: OrderDao
+    ): ILocalOrderRepository {
+        return LocalOrderRepositoryImpl(orderDao)
     }
 }

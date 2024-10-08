@@ -1,6 +1,7 @@
 package com.example.oneclickorder.data
 
 import android.util.Log
+import com.juul.kable.AndroidPeripheral
 import com.juul.kable.Characteristic
 import com.juul.kable.ConnectionLostException
 import com.juul.kable.Peripheral
@@ -23,6 +24,7 @@ class BLEManager @Inject constructor(private val scope: CoroutineScope) {
     private val characteristicUUID = UUID.fromString("00001111-0000-1000-8000-00805f9b34fb")
 
     companion object {
+        private const val REQUESTED_MTU = 512  // Adjust the requested MTU size
         private const val DEVICE_NAME = "Galaxy A14"  // Update with correct device name
         private const val TIMEOUT_DURATION = 10000L  // 10 seconds timeout
     }
@@ -50,6 +52,7 @@ class BLEManager @Inject constructor(private val scope: CoroutineScope) {
     /**
      * Scan for BLE devices and connect to the peripheral with retries and timeout.
      */
+
     suspend fun scanAndConnect(): Peripheral? {
         return withTimeoutOrNull(TIMEOUT_DURATION) {
             try {
@@ -61,7 +64,13 @@ class BLEManager @Inject constructor(private val scope: CoroutineScope) {
                 // Create a Peripheral and connect
                 advertisement?.let {
                     val peripheral = scope.peripheral(it)
-                    retryOperation { peripheral.connect() }
+                    retryOperation {
+                        peripheral.connect()
+                        // MTU Request for Android Peripheral
+                        val mtuSize = (peripheral as AndroidPeripheral).requestMtu(REQUESTED_MTU)
+                        Log.d("BLEManager", "Requested MTU size: $REQUESTED_MTU, Negotiated MTU size: $mtuSize")
+                    }
+
                     peripheral  // Return the connected peripheral
                 }
             } catch (e: ConnectionLostException) {

@@ -4,6 +4,7 @@ import android.util.Log
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.oneclickorder.domain.BLEUseCase
+import com.example.oneclickorder.domain.LocalOrderUseCase
 import com.juul.kable.ConnectionLostException
 import com.juul.kable.NotReadyException
 import com.juul.kable.Peripheral
@@ -20,7 +21,9 @@ import javax.inject.Inject
 
 @HiltViewModel
 class BLEViewModel @Inject constructor(
-    private val bleUseCase: BLEUseCase
+    private val bleUseCase: BLEUseCase,
+    private val localOrderUseCase: LocalOrderUseCase  // Inject LocalOrderUseCase
+
 ) : ViewModel() {
 
     private val _bleState = MutableStateFlow(BLEState())
@@ -33,6 +36,19 @@ class BLEViewModel @Inject constructor(
 
     init {
         processIntents()
+        fetchUnsentOrders()
+
+
+    }
+    /**
+     * Fetch unsent orders and update the state.
+     */
+    private fun fetchUnsentOrders() {
+        viewModelScope.launch {
+            localOrderUseCase.getUnsentOrders().collect { orders ->
+                _bleState.value = _bleState.value.copy(unsentOrders = orders)
+            }
+        }
     }
 
     fun sendIntent(intent: BLEIntent) {
@@ -83,6 +99,7 @@ class BLEViewModel @Inject constructor(
             if (connectedPeripheral != null) {
                 // Update the connection state to connected
                 _bleState.value = _bleState.value.copy(connectionState = BLEState.ConnectionState.Connected)
+
                 observePeripheralConnectionState()
             } else {
                 // Update the connection state to error
@@ -95,12 +112,16 @@ class BLEViewModel @Inject constructor(
     private fun sendOrderData(orderData: String) {
         viewModelScope.launch {
             try {
+                // Save the order in Room before attempting to send it
+                val currentTime = System.currentTimeMillis().toString()  // Example of using time as 'createdBy'
+                val orderId = localOrderUseCase.saveOrder(orderData, currentTime)  // Save order to Room and get ID
                 connectedPeripheral?.let { peripheral ->
                     _bleState.value = _bleState.value.copy(orderState = BLEState.OrderState.SendingOrder(orderData))
-
                     val success = bleUseCase.sendOrderData(peripheral, orderData)
                     if (success) {
                         startObservingNotifications()
+                        localOrderUseCase.updateOrderStatus(orderId.toInt(), true)  // Update isSent to true
+
                     } else {
                         throw ConnectionLostException("Failed to send order data")
                     }

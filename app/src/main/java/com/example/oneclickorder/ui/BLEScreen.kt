@@ -21,7 +21,6 @@ fun BLEScreen(viewModel: BLEViewModel = hiltViewModel()) {
     // Collect the unified BLE state from the ViewModel
     val bleState by viewModel.bleState.collectAsState()
 
-
     Column(
         modifier = Modifier
             .fillMaxSize()
@@ -47,7 +46,14 @@ fun BLEScreen(viewModel: BLEViewModel = hiltViewModel()) {
         Spacer(modifier = Modifier.height(16.dp))
 
         // Button to send the first order data after the connection
-        Button(onClick = { viewModel.sendIntent(BLEIntent.SendOrderData("Order #166588")) }) {
+        Button(onClick = {
+            viewModel.sendIntent(
+                BLEIntent.SendOrderData(
+                    "\"Steak\", \"Fish\", \"Chicken\", \"Rice\", \"Noodles\",\n" +
+                            "\"Coke\", \"Lemonade\", \"Taco\", \"Burrito\", \"Cake\" "
+                )
+            )
+        }) {
             Text(text = "Send Order 1")
         }
 
@@ -56,6 +62,33 @@ fun BLEScreen(viewModel: BLEViewModel = hiltViewModel()) {
         // Button to send the second order data after the connection
         Button(onClick = { viewModel.sendIntent(BLEIntent.SendOrderData("Order #15000")) }) {
             Text(text = "Send Order 2")
+        }
+
+        Spacer(modifier = Modifier.height(16.dp))
+
+        // Display the list of failed orders if there are any
+        if (bleState.failedOrders.isNotEmpty()) {
+            Text(text = "Failed Orders:", modifier = Modifier.padding(top = 16.dp))
+
+            // Iterate through the list of failed orders and display them
+            Column(modifier = Modifier.padding(8.dp)) {
+                bleState.failedOrders.forEach { failedOrder ->
+                    Text(text = failedOrder, modifier = Modifier.padding(4.dp))
+                }
+            }
+        }
+
+        Spacer(modifier = Modifier.height(16.dp))
+
+        // Display the list of unsent orders (isSent = false)
+        if (bleState.unsentOrders.isNotEmpty()) {
+            Text(text = "Unsent Orders:", modifier = Modifier.padding(top = 16.dp))
+
+            Column(modifier = Modifier.padding(8.dp)) {
+                bleState.unsentOrders.forEach { unsentOrder ->
+                    Text(text = "Order ID: ${unsentOrder.orderId}, Data: ${unsentOrder.orderString}", modifier = Modifier.padding(4.dp))
+                }
+            }
         }
     }
 }
