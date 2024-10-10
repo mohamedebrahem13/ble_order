@@ -100,17 +100,6 @@ fun BLEScreen(viewModel: BLEViewModel = hiltViewModel()) {
 
         Spacer(modifier = Modifier.height(16.dp))
 
-        // Display the list of failed orders if there are any
-        if (bleState.failedOrders.isNotEmpty()) {
-            Text(text = "Failed Orders:", modifier = Modifier.padding(top = 16.dp))
-
-            // Iterate through the list of failed orders and display them
-            Column(modifier = Modifier.padding(8.dp)) {
-                bleState.failedOrders.forEach { failedOrder ->
-                    Text(text = failedOrder, modifier = Modifier.padding(4.dp))
-                }
-            }
-        }
 
         Spacer(modifier = Modifier.height(16.dp))
 

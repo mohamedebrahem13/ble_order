@@ -113,11 +113,13 @@ class BLEViewModel @Inject constructor(
         viewModelScope.launch {
             try {
                 // Save the order in Room before attempting to send it
-                val currentTime = System.currentTimeMillis().toString()  // Example of using time as 'createdBy'
+                val currentTime = System.currentTimeMillis().toString()
                 val orderId = localOrderUseCase.saveOrder(orderData, currentTime)  // Save order to Room and get ID
+
+                val orderWithId = "$orderId|$orderData"  // Prepend orderId to the orderData
                 connectedPeripheral?.let { peripheral ->
-                    _bleState.value = _bleState.value.copy(orderState = BLEState.OrderState.SendingOrder(orderData))
-                    val success = bleUseCase.sendOrderData(peripheral, orderData)
+                    _bleState.value = _bleState.value.copy(orderState = BLEState.OrderState.SendingOrder(orderWithId))
+                    val success = bleUseCase.sendOrderData(peripheral, orderWithId)
                     if (success) {
                         startObservingNotifications()
                         localOrderUseCase.updateOrderStatus(orderId.toInt(), true)  // Update isSent to true
@@ -127,26 +129,61 @@ class BLEViewModel @Inject constructor(
                     }
                 } ?: throw NotReadyException("No connected device. Please scan and connect first.")
             } catch (e: ConnectionLostException) {
-                requeueFailedOrder(orderData)
                 _bleState.value = _bleState.value.copy(
                     orderState = BLEState.OrderState.Error(e.message ?: "Connection lost while sending data")
                 )
                 // Force disconnect and reconnect
                 disconnectAndReconnect()
             } catch (e: NotReadyException) {
-                requeueFailedOrder(orderData)
                 _bleState.value = _bleState.value.copy(
                     orderState = BLEState.OrderState.Error(e.message ?: "Peripheral not ready for data transmission")
                 )
                 // Force disconnect and reconnect
                 disconnectAndReconnect()
             } catch (e: Exception) {
-                requeueFailedOrder(orderData)
                 _bleState.value = _bleState.value.copy(
                     orderState = BLEState.OrderState.Error(e.message ?: "Unknown error occurred while sending data")
                 )
                 Log.e("BLEViewModel", "Error sending order data: ${e.message}")
                 // Force disconnect and reconnect
+                disconnectAndReconnect()
+            }
+        }
+    }
+    // Method to send unsent orders without saving them again
+    private fun sendUnsentOrder(orderId: Int, orderData: String) {
+        viewModelScope.launch {
+            try {
+                connectedPeripheral?.let { peripheral ->
+                    // Concatenate orderId before the orderData
+                    val orderWithId = "$orderId|$orderData"
+
+                    _bleState.value = _bleState.value.copy(orderState = BLEState.OrderState.SendingOrder(orderWithId))
+
+                    // Send the order with the concatenated orderId and orderData
+                    val success = bleUseCase.sendOrderData(peripheral, orderWithId)
+                    if (success) {
+                        startObservingNotifications()
+                        localOrderUseCase.updateOrderStatus(orderId, true)  // Mark the order as sent in the database
+                    } else {
+                        throw ConnectionLostException("Failed to send unsent order")
+                    }
+                } ?: throw NotReadyException("No connected device. Please scan and connect first.")
+            } catch (e: ConnectionLostException) {
+                _bleState.value = _bleState.value.copy(
+                    orderState = BLEState.OrderState.Error(e.message ?: "Connection lost while sending unsent order")
+                )
+                disconnectAndReconnect()
+            } catch (e: NotReadyException) {
+                _bleState.value = _bleState.value.copy(
+                    orderState = BLEState.OrderState.Error(e.message ?: "Peripheral not ready for transmission")
+                )
+                disconnectAndReconnect()
+            } catch (e: Exception) {
+                _bleState.value = _bleState.value.copy(
+                    orderState = BLEState.OrderState.Error(e.message ?: "Unknown error occurred while sending unsent order")
+                )
+                Log.e("BLEViewModel", "Error sending unsent order: ${e.message}")
                 disconnectAndReconnect()
             }
         }
@@ -165,22 +202,16 @@ class BLEViewModel @Inject constructor(
         }
     }
 
-    // Requeue failed orders by updating the state
-    private fun requeueFailedOrder(orderData: String) {
-        val updatedFailedOrders = _bleState.value.failedOrders + orderData
-        _bleState.value = _bleState.value.copy(failedOrders = updatedFailedOrders) // Update failedOrders in state
-    }
+
 
     // Automatically retry failed orders when the connection is re-established
     private fun retryFailedOrders() {
         viewModelScope.launch {
-            val failedOrders = _bleState.value.failedOrders
-            if (failedOrders.isNotEmpty()) {
-                for (order in failedOrders) {
-                    sendOrderData(order)
+            val unsentOrders = _bleState.value.unsentOrders
+            if (unsentOrders.isNotEmpty()) {
+                for (order in unsentOrders) {
+                    sendUnsentOrder(order.orderId, order.orderString)
                 }
-                // Clear the failed orders after retry
-                _bleState.value = _bleState.value.copy(failedOrders = emptyList())
             }
         }
     }

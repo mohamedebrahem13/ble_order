@@ -5,7 +5,6 @@ import com.example.oneclickorder.data.room.entity.OrderEntity
 data class BLEState(
     val connectionState: ConnectionState = ConnectionState.Idle,
     val orderState: OrderState = OrderState.Idle,
-    val failedOrders: List<String> = emptyList(),  // Add failedOrders here
     val unsentOrders: List<OrderEntity> = emptyList()  // Add unsent orders here
 
 
