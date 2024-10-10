@@ -66,9 +66,21 @@ class BLEManager @Inject constructor(private val scope: CoroutineScope) {
                     val peripheral = scope.peripheral(it)
                     retryOperation {
                         peripheral.connect()
+
                         // MTU Request for Android Peripheral
-                        val mtuSize = (peripheral as AndroidPeripheral).requestMtu(REQUESTED_MTU)
-                        Log.d("BLEManager", "Requested MTU size: $REQUESTED_MTU, Negotiated MTU size: $mtuSize")
+                        if (peripheral is AndroidPeripheral) {
+                            val mtuSize = peripheral.requestMtu(REQUESTED_MTU)
+                            Log.d("BLEManager", "Requested MTU size: $REQUESTED_MTU, Negotiated MTU size: $mtuSize")
+                        }
+
+                        // After connecting and negotiating MTU, send small data first
+                        val characteristic = getCharacteristic(peripheral)
+                        if (characteristic != null) {
+                            // Small data packet (e.g., "ping" message)
+                            val smallData = "PING"+"END"
+                            peripheral.write(characteristic, smallData.toByteArray(Charsets.UTF_8), WriteType.WithResponse)
+                            Log.d("BLEManager", "Small data packet sent to stabilize connection")
+                        }
                     }
 
                     peripheral  // Return the connected peripheral
@@ -84,20 +96,47 @@ class BLEManager @Inject constructor(private val scope: CoroutineScope) {
     }
     // Existing writeOrderData and startObservingNotifications methods
     suspend fun writeOrderData(peripheral: Peripheral, orderData: String): Boolean {
+        val orderWithEnd = orderData + "END"  // Append "END" to all orders, small or large
+        val orderSize = calculateOrderSizeInBytes(orderWithEnd)
+        Log.d("BLEManager", "Order size in bytes: $orderSize")
+
         val characteristic = getCharacteristic(peripheral)
-        return if (characteristic != null) {
-            try {
-                peripheral.write(characteristic, orderData.toByteArray(), WriteType.WithResponse)
-                Log.d("BLEManager", "Order data written successfully")
-                true
-            } catch (e: Exception) {
-                Log.e("BLEManager", "Failed to write order data: ${e.message}")
-                false
-            }
-        } else {
+        if (characteristic == null) {
             Log.e("BLEManager", "Characteristic not found")
-            false
+            return false
         }
+
+        // Calculate the maximum payload size based on the negotiated MTU
+        val maxPayloadSize = REQUESTED_MTU - 3  // Subtract 3 bytes for BLE overhead
+        val dataBytes = orderWithEnd.toByteArray(Charsets.UTF_8)  // Convert orderData with "END" appended to bytes
+
+        try {
+            // Check if the order data fits within a single packet
+            if (dataBytes.size <= maxPayloadSize) {
+                // Send the small order with "END" in a single packet
+                peripheral.write(characteristic, dataBytes, WriteType.WithResponse)
+                Log.d("BLEManager", "Small order with 'END' written successfully")
+            } else {
+                // Chunk the data if it exceeds the MTU size
+                val chunks = dataBytes.toList().chunked(maxPayloadSize)
+                for (chunk in chunks) {
+                    peripheral.write(characteristic, chunk.toByteArray(), WriteType.WithResponse)
+                    Log.d("BLEManager", "Chunk written successfully")
+                }
+                Log.d("BLEManager", "All chunks written successfully")
+            }
+            return true
+        } catch (e: Exception) {
+            Log.e("BLEManager", "Failed to write order data or chunk: ${e.message}")
+            return false
+        }
+    }
+    private fun calculateOrderSizeInBytes(orderData: String): Int {
+        // Convert the order data to bytes and add "END" to mark the end of the order
+        val dataBytes = (orderData + "END").toByteArray(Charsets.UTF_8)
+
+        // Return the size of the byte array, which represents the size of the order in bytes
+        return dataBytes.size
     }
 
     fun startObservingNotifications(peripheral: Peripheral, characteristic: Characteristic): Flow<String> {

@@ -165,7 +165,6 @@ class BLEViewModel @Inject constructor(
         }
     }
 
-
     // Requeue failed orders by updating the state
     private fun requeueFailedOrder(orderData: String) {
         val updatedFailedOrders = _bleState.value.failedOrders + orderData
