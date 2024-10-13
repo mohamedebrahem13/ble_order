@@ -2,6 +2,7 @@ package com.example.oneclickorder.ui
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.height
@@ -109,9 +110,27 @@ fun BLEScreen(viewModel: BLEViewModel = hiltViewModel()) {
 
             Column(modifier = Modifier.padding(8.dp)) {
                 bleState.unsentOrders.forEach { unsentOrder ->
-                    Text(text = "Order ID: ${unsentOrder.orderId}, Data: ${unsentOrder.orderString}", modifier = Modifier.padding(4.dp))
+                    Row(
+                        modifier = Modifier.padding(vertical = 8.dp),
+                        verticalAlignment = Alignment.CenterVertically // Align items in the center vertically
+                    ) {
+                        // Order ID
+                        Text(
+                            text = "Order ID: ${unsentOrder.orderId}",
+                            modifier = Modifier.weight(1f).padding(end = 16.dp) // Take up available space and add padding
+                        )
+
+                        // Button to remove the unsent order by orderId
+                        Button(onClick = {
+                            viewModel.sendIntent(BLEIntent.DeleteUnsentOrder(unsentOrder.orderId))
+                        }) {
+                            Text(text = "Remove")
+                        }
+
+                    }
                 }
             }
         }
+
     }
 }

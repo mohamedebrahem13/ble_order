@@ -9,6 +9,7 @@ import com.juul.kable.Scanner
 import com.juul.kable.WriteType
 import com.juul.kable.peripheral
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.filter
 import kotlinx.coroutines.flow.firstOrNull
@@ -122,6 +123,7 @@ class BLEManager @Inject constructor(private val scope: CoroutineScope) {
                 for (chunk in chunks) {
                     peripheral.write(characteristic, chunk.toByteArray(), WriteType.WithResponse)
                     Log.d("BLEManager", "Chunk written successfully")
+                    delay(100)  // Adjust delay based on performance and server response time
                 }
                 Log.d("BLEManager", "All chunks written successfully")
             }

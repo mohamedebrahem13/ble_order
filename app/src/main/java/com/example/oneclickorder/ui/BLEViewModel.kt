@@ -37,8 +37,6 @@ class BLEViewModel @Inject constructor(
     init {
         processIntents()
         fetchUnsentOrders()
-
-
     }
     /**
      * Fetch unsent orders and update the state.
@@ -63,6 +61,8 @@ class BLEViewModel @Inject constructor(
                 when (intent) {
                     is BLEIntent.ScanAndConnect -> handleScanAndConnect()
                     is BLEIntent.SendOrderData -> queueOrderData(intent.orderData)
+                    is BLEIntent.DeleteUnsentOrder -> removeUnsentOrder(intent.orderId)  // Handle delete order intent
+
                 }
             }
         }
@@ -188,6 +188,16 @@ class BLEViewModel @Inject constructor(
             }
         }
     }
+    private fun removeUnsentOrder(orderId: Int) {
+        viewModelScope.launch {
+            try {
+                localOrderUseCase.deleteOrder(orderId)
+            } catch (e: Exception) {
+                Log.e("BLEViewModel", "Error deleting order: ${e.message}")
+            }
+        }
+    }
+
     private fun disconnectAndReconnect() {
         viewModelScope.launch {
             connectedPeripheral?.let {
