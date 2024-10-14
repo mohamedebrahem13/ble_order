@@ -88,14 +88,18 @@ fun BLEScreen(viewModel: BLEViewModel = hiltViewModel()) {
                             "\"Coke24\", \"Lemonade24\", \"Taco24\", \"Burrito24\", \"Cake24\" 2124578"
                 )
             )
-        }) {
+
+        }, enabled = bleState.areButtonsEnabled  // Disable buttons when necessary
+        ) {
             Text(text = "Send Order 1")
         }
 
         Spacer(modifier = Modifier.height(16.dp))
 
         // Button to send the second order data after the connection
-        Button(onClick = { viewModel.sendIntent(BLEIntent.SendOrderData("Order #15000")) }) {
+        Button(onClick = { viewModel.sendIntent(BLEIntent.SendOrderData("Order #15000")) }
+            , enabled = bleState.areButtonsEnabled  // Disable buttons when necessary
+        ) {
             Text(text = "Send Order 2")
         }
 
@@ -123,7 +127,8 @@ fun BLEScreen(viewModel: BLEViewModel = hiltViewModel()) {
                         // Button to remove the unsent order by orderId
                         Button(onClick = {
                             viewModel.sendIntent(BLEIntent.DeleteUnsentOrder(unsentOrder.orderId))
-                        }) {
+                        }
+                        ) {
                             Text(text = "Remove")
                         }
 

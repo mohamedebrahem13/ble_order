@@ -70,10 +70,33 @@ class BLEViewModel @Inject constructor(
 
     private fun queueOrderData(orderData: String) {
         viewModelScope.launch {
-            orderQueue.add(orderData)
-            processOrderQueue()
+            // Calculate the size of the order in bytes
+            val orderSizeInBytes = orderData.toByteArray().size
+
+            // Check if the order size exceeds 1600 bytes
+            if (orderSizeInBytes > 1000) {
+                // Disable buttons while processing a large order
+                _bleState.value = _bleState.value.copy(areButtonsEnabled = false)
+
+                Log.e("BLEViewModel", "Large order detected, processing with delay. Size: $orderSizeInBytes bytes")
+
+                // Add the order to the queue and process it
+                orderQueue.add(orderData)
+                processOrderQueue()
+
+                // Introduce a delay after sending the large order (e.g., 5 seconds)
+                delay(5000)
+
+                // Re-enable the buttons after the delay
+                _bleState.value = _bleState.value.copy(areButtonsEnabled = true)
+            } else {
+                // For normal orders (small orders), just process the order without delay
+                orderQueue.add(orderData)
+                processOrderQueue()
+            }
         }
     }
+
 
     private fun processOrderQueue() {
         if (isProcessingOrders) return
